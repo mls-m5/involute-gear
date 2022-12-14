@@ -115,21 +115,26 @@ struct Gear {
 
 struct GearSettings {
 
-    // Input parameters
-    int numTeeth;
-    int module = 1;
-    float preassureAngle = 20; // Degrees
+    GearSettings(float referenceDiameter,
+                 int numGears,
+                 float gearDepth = 20,
+                 float preassureAngle = 20.f / 180.f * pi<float>())
+        : referenceDiameter{referenceDiameter}
+        , gearDepth{gearDepth}
+        , preassureAngle{preassureAngle}
+        , numGears{numGears} {}
 
-    // Results. Don't set these
-    float pitchD = module * preassureAngle;
-    float addendumD = pitchD + module * 2;
-    float clearingD = pitchD - module * 2;
-    float dedendumD = pitchD - module * 2 * 1.5;
-    float baseD = pitchD * std::cos(preassureAngle / 180.f * pi<float>());
+    float referenceDiameter;
+    float gearDepth;
+    // Between 14 and 20 deg according to google
+    float preassureAngle;
 
-    float thresholdAngle(float d) {
-        return std::sqrt((d / 2) / baseD - 1);
-    }
+    float rootDiameter = referenceDiameter - gearDepth;
+    float tipDiameter = referenceDiameter + gearDepth;
+
+    int numGears = 20;
+    //    float baseRadius = 100;
+    //    float addendumRadius = baseRadius + 10;
 };
 
 int main(int argc, char **argv) {
@@ -151,22 +156,52 @@ int main(int argc, char **argv) {
     auto gear2 = Gear{};
     auto gear3 = Gear{};
 
-    auto settings = GearSettings{40, 10};
+    auto settings = GearSettings{200, 20};
 
     gear1.pos = {200, 200};
-    gear2.pos = {gear1.pos.x + settings.pitchD, 200};
-    gear3.pos = {gear1.pos.x + settings.pitchD, 200};
+    gear2.pos = {gear1.pos.x + settings.referenceDiameter, 200};
+    gear3.pos = {gear1.pos.x + settings.referenceDiameter, 200};
 
     auto center = (gear1.pos + gear2.pos) / 2.f;
 
+    auto contactLength = 30.f;
+
+    auto lineOfAction = [contactLength](float i) {
+        auto a = i;
+        return glm::vec2{(a - .5) * 1, (a - .5) * 1} * contactLength;
+    };
+
+    float contactPointIndex = 0;
+
+    bool isRunning = true;
+
+    auto amountToAngle = pi<float>() * 2. / (settings.numGears) * 1.4;
+
+    //    gear1.points.push_back({settings.referenceDiameter / 2, 0});
+
     for (auto amount = 0.f; amount <= 1.; amount += 1. / 100.) {
+        auto angle = amountToAngle * amount;
+        gear1.angle = angle;
+        gear2.angle = -angle;
+        gear3.angle = 0;
+        gear3.pos =
+            gear2.pos + vec2{0, angle * settings.referenceDiameter / 2.};
+
+        gear1.addInverted(center + lineOfAction(amount));
+        gear2.addInverted(center + lineOfAction(amount));
+        gear3.addInverted(center + lineOfAction(amount));
     }
+
+    renderer.scale(1, 1);
+
+    gear1.rotatePoints(pi<float>() * 2 / settings.numGears);
+    gear1.mirror();
+    gear1.repeat(settings.numGears);
+    gear2.rotatePoints(-pi<float>() * 2 / settings.numGears);
 
     //    gear1.mirror();
     //    gear1.repeat(settings.numGears);
     //    gear2.repeat(settings.numGears);
-
-    bool isRunning = true;
 
     for (; isRunning;) {
         for (auto event = std::optional<sdl::Event>{};
@@ -181,7 +216,8 @@ int main(int argc, char **argv) {
                 gear2.angle = -gear1.angle;
 
                 gear3.pos =
-                    gear2.pos + vec2{0, gear1.angle * settings.pitchD / 2.};
+                    gear2.pos +
+                    vec2{0, gear1.angle * settings.referenceDiameter / 2.};
 
                 window.title(std::to_string(gear1.angle).c_str());
             }
@@ -193,21 +229,38 @@ int main(int argc, char **argv) {
         //        gear1.angle += .001;
         //        gear2.angle -= .001;
 
-        drawArc(renderer, gear1.pos, settings.baseD / 2);
-        drawArc(renderer, gear1.pos, settings.addendumD / 2);
-        drawArc(renderer, gear1.pos, settings.dedendumD / 2);
-        drawArc(renderer, gear1.pos, settings.clearingD / 2);
-        drawArc(renderer, gear2.pos, settings.pitchD / 2);
+        drawArc(renderer, gear1.pos, settings.referenceDiameter / 2);
+        drawArc(renderer, gear2.pos, settings.referenceDiameter / 2);
+        drawArc(renderer, gear1.pos, settings.rootDiameter / 2);
+        drawArc(renderer, gear2.pos, settings.rootDiameter / 2);
+        drawArc(renderer, gear1.pos, settings.tipDiameter / 2);
+        drawArc(renderer, gear2.pos, settings.tipDiameter / 2);
 
         renderer.drawColor({200, 200, 200});
-
-        drawArc(renderer, gear1.pos, settings.pitchD / 2);
-
         gear1.draw(renderer);
         gear2.draw(renderer);
-        //        gear3.draw(renderer);
+        gear3.draw(renderer);
+
+        for (float i = 0; i < 1; i += .1) {
+            auto p1 = lineOfAction(i) + center;
+            auto p2 = lineOfAction(i) + center;
+
+            drawLine(renderer, p1, p2);
+        }
 
         renderer.drawColor({255, 255, 255});
+
+        auto contactPoint = lineOfAction(gear1.angle / amountToAngle) + center;
+        contactPoint.x = center.x;
+
+        drawLine(renderer,
+                 contactPoint + vec2{-100, 0},
+                 contactPoint + vec2{100, 0});
+
+        drawLine(renderer,
+                 gear1.pos,
+                 gear1.createLocation() *
+                     vec4{settings.referenceDiameter / 2, 0, 0, 1});
 
         renderer.present();
         std::this_thread::sleep_for(10ms);
