@@ -2,25 +2,47 @@
 cmake_minimum_required(VERSION 3.23)
 project(involute-gears)
 
-add_executable(
-    involute-gears
-    src/main.cpp
+add_library(
+    common
+    INTERFACE
     )
 
+
 target_compile_features(
-    involute-gears
-    PRIVATE
+    common
+    INTERFACE
     cxx_std_17
     )
 
 find_package(Threads)
 target_link_libraries(
-    involute-gears
-    PRIVATE
+    common
+    INTERFACE
     ${CMAKE_THREAD_LIBS_INIT}
     sdlpp
     )
 
+add_executable(
+    involute-gears
+    src/main.cpp
+    )
+
+target_link_libraries(
+    involute-gears
+    PRIVATE
+    common
+    )
+
+add_executable(
+    first-test
+    src/first-test.cpp
+    )
+
+target_link_libraries(
+    first-test
+    PRIVATE
+    common
+    )
 
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
