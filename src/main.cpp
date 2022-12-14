@@ -17,8 +17,11 @@ void drawLine(sdl::RendererView view, glm::vec2 p1, glm::vec2 p2) {
     view.drawLine(p1.x, p1.y, p2.x, p2.y);
 }
 
-void drawArc(
-    FuncT f, glm::vec2 center, float r, float start = 0, float end = 0) {
+void drawArc(FuncT f,
+             glm::vec2 center,
+             float r,
+             float start = 0,
+             float end = pi<float>() * 2) {
 
     auto step = 1. / r;
 
@@ -32,7 +35,6 @@ void drawArc(
 
 struct Gear {
     auto createLocation() {
-
         mat4 location = identity<mat4>();
         location = translate(location, vec3{pos, 0});
         location = rotate(location, angle, {0, 0, 1});
@@ -42,33 +44,51 @@ struct Gear {
     void draw(sdl::RendererView view) {
         auto location = createLocation();
 
-        for (auto &line : lines) {
-            auto p1 = location *vec4{line.first, 0, 1};
-            auto p2 = location *vec4{line.second, 0, 1};
-            view.drawLine(p1.x, p1.y, p2.x, p2.y);
+        for (size_t i = 1; i < points.size(); ++i) {
+            auto p1 = location *vec4{points.at(i - 1), 0, 1};
+            auto p2 = location *vec4{points.at(i), 0, 1};
+            drawLine(view, p1, p2);
         }
     }
 
-    void addInverted(vec2 p) {
+    void addInverted(vec2 p1) {
         auto inv = affineInverse(createLocation());
+        auto local = inv *vec4{p1, 0, 1};
+        points.emplace_back(vec2{local});
+    }
 
-        auto local = inv *vec4{p, 0, 1};
+    void repeat(int num) {
+        auto tmp = points;
+        for (int i = 1; i < num; ++i) {
+            auto angle = pi<float>() * 2.f * i / num;
+            mat4 location = identity<mat4>();
+            location = rotate(location, angle, {0, 0, 1});
 
-        lines.emplace_back(lines.back().second, vec2{local});
+            for (auto p : tmp) {
+                auto pt = location *vec4{p, 0, 1};
+                points.push_back(pt);
+            }
+        }
     }
 
     glm::vec2 pos;
     float angle = 0;
 
-    std::vector<std::pair<glm::vec2, glm::vec2>> lines;
+    std::vector<glm::vec2> points;
+};
+
+struct GearSettings {
+    int numGears = 20;
+    float baseRadius = 100;
+    float addendumRadius = baseRadius + 10;
 };
 
 int main(int argc, char **argv) {
     auto window = sdl::Window{"sdl window",
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
-                              500,
-                              500,
+                              800,
+                              600,
                               SDL_WINDOW_OPENGL};
 
     auto renderer = sdl::Renderer{window.get(), -1, SDL_RENDERER_ACCELERATED};
@@ -81,34 +101,38 @@ int main(int argc, char **argv) {
     auto gear1 = Gear{};
     auto gear2 = Gear{};
 
-    auto radius = 100;
+    auto settings = GearSettings{};
 
     gear1.pos = {200, 200};
 
     auto overlap = 20;
 
-    gear2.pos = {gear1.pos.x + radius * 2 - 20, 200};
+    gear2.pos = {gear1.pos.x + settings.baseRadius + settings.addendumRadius,
+                 200};
 
     auto center = (gear1.pos + gear2.pos) / 2.f;
 
-    drawArc(
-        [&](auto p1, auto p2) {
-            //            renderer.drawLine(p1.x, p1.y, p2.x, p2.y);
-            gear1.lines.push_back({p1, p2});
-            gear2.lines.push_back({p1, p2});
-        },
-        {0, 0},
-        100,
-        0,
-        5);
+    auto contactLength = 30.f;
 
-    auto contactLength = 20.f;
+    auto lineOfAction = [contactLength](float i) {
+        return glm::vec2{i / 2.f, i} * contactLength;
+    };
 
-    auto lineOfAction = [](float i) { return glm::vec2{i / 2.f, i}; };
-
-    int contactPointIndex = 0;
+    float contactPointIndex = 0;
 
     bool isRunning = true;
+
+    for (auto amount = 0.f; amount <= 1.; amount += 1. / 100.) {
+        auto angle = pi<float>() * 2 / settings.numGears * amount;
+        gear1.angle = angle;
+        gear2.angle = -angle;
+
+        gear1.addInverted(center + lineOfAction(amount));
+        gear2.addInverted(center + lineOfAction(amount));
+    }
+
+    gear1.repeat(settings.numGears);
+    gear2.repeat(settings.numGears);
 
     for (; isRunning;) {
         for (auto event = std::optional<sdl::Event>{};
@@ -123,15 +147,29 @@ int main(int argc, char **argv) {
         renderer.clear();
         renderer.drawColor({100, 100, 100, 255});
 
-        if (gear1.angle < pi<float>() * 2) {
-            gear1.angle += .01;
-            gear2.angle -= .01;
-        }
+        gear1.angle += .001;
+        gear2.angle -= .001;
 
         gear1.draw(renderer);
         gear2.draw(renderer);
 
-        for (float i = -contactLength; i < contactLength; i += 1) {
+        drawArc(
+            [&](auto p1, auto p2) {
+                drawLine(renderer, p1 + gear1.pos, p2 + gear1.pos);
+                drawLine(renderer, p1 + gear2.pos, p2 + gear2.pos);
+            },
+            {0, 0},
+            settings.baseRadius);
+
+        drawArc(
+            [&](auto p1, auto p2) {
+                drawLine(renderer, p1 + gear1.pos, p2 + gear1.pos);
+                drawLine(renderer, p1 + gear2.pos, p2 + gear2.pos);
+            },
+            {0, 0},
+            settings.addendumRadius);
+
+        for (float i = 0; i < 1; i += .1) {
             auto p1 = lineOfAction(i) + center;
             auto p2 = lineOfAction(i) + center;
 
@@ -140,19 +178,14 @@ int main(int argc, char **argv) {
 
         renderer.drawColor({255, 255, 255});
 
-        contactPointIndex += 1;
-        if (contactPointIndex > contactLength) {
-            contactPointIndex = -contactLength;
+        contactPointIndex += .1;
+        if (contactPointIndex > 1) {
+            contactPointIndex = 0;
         }
 
         auto contactPoint = lineOfAction(contactPointIndex) + center;
 
-        if (gear1.angle < pi<float>() * 2) {
-            gear1.addInverted(contactPoint);
-            gear2.addInverted(contactPoint);
-        }
-
-        renderer.drawPoint(contactPoint);
+        //        renderer.drawPoint(contactPoint);
 
         renderer.present();
         std::this_thread::sleep_for(10ms);
