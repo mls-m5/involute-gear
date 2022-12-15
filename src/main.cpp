@@ -221,6 +221,7 @@ int main(int argc, char **argv) {
     auto center = (gearView1.pos + gearView2.pos) / 2.f;
 
     bool isRunning = true;
+    bool shouldAnimate = false;
 
     for (; isRunning;) {
         for (auto event = std::optional<sdl::Event>{};
@@ -230,14 +231,20 @@ int main(int argc, char **argv) {
                 isRunning = false;
                 break;
             }
-            if (event->type == SDL_MOUSEMOTION) {
+            if (event->type == SDL_MOUSEMOTION && !shouldAnimate) {
                 gearView1.angle = 1. / 100. * event->motion.y - 1.;
-                gearView2.angle =
-                    -gearView1.angle + pi<float>() + settings.pitchAngle / 2.f;
 
                 window.title(std::to_string(gearView1.angle).c_str());
             }
+            else if (event->type == SDL_MOUSEBUTTONDOWN) {
+                shouldAnimate = !shouldAnimate;
+            }
         }
+
+        gearView1.angle += shouldAnimate * .004;
+        gearView2.angle =
+            -gearView1.angle + pi<float>() + settings.pitchAngle / 2.f;
+
         renderer.drawColor({100, 0, 0, 255});
         renderer.clear();
         renderer.drawColor({100, 100, 100, 255});
