@@ -124,11 +124,17 @@ struct GearSettings {
     float pitchD = module * preassureAngle;
     float addendumD = pitchD + module * 2;
     float clearingD = pitchD - module * 2;
-    float dedendumD = pitchD - module * 2 * 1.5;
+    float dedendumD = pitchD - module * 2 * 1.5; // Root angle
     float baseD = pitchD * std::cos(preassureAngle / 180.f * pi<float>());
 
-    float thresholdAngle(float d) {
-        return std::sqrt((d / 2) / baseD - 1);
+    float thresholdAngle(float d) const {
+        return std::sqrt((d * d / 4.f) / (baseD * baseD / 4.f) - 1.f);
+    }
+
+    glm::vec2 involouteProfile(float angle) {
+        auto r = baseD / 2.f;
+        return r *vec2{std::cos(angle), std::sin(angle)} +
+               r * angle *vec2{std::sin(angle), -std::cos(angle)};
     }
 };
 
@@ -159,8 +165,15 @@ int main(int argc, char **argv) {
 
     auto center = (gear1.pos + gear2.pos) / 2.f;
 
-    for (auto amount = 0.f; amount <= 1.; amount += 1. / 100.) {
+    //    for (auto angle = settings.thresholdAngle(settings.clearingD);
+    //         angle <= settings.thresholdAngle(settings.addendumD);
+    //         angle += .001) {
+    for (auto angle = 0.f; angle <= 4; angle += .01) {
+        auto v = settings.involouteProfile(angle);
+        gear1.points.push_back(v);
     }
+    //    gear1.rotatePoints(settings.thresholdAngle(settings.pitchD));
+    //    gear1.mirror();
 
     //    gear1.mirror();
     //    gear1.repeat(settings.numGears);
@@ -190,9 +203,6 @@ int main(int argc, char **argv) {
         renderer.clear();
         renderer.drawColor({100, 100, 100, 255});
 
-        //        gear1.angle += .001;
-        //        gear2.angle -= .001;
-
         drawArc(renderer, gear1.pos, settings.baseD / 2);
         drawArc(renderer, gear1.pos, settings.addendumD / 2);
         drawArc(renderer, gear1.pos, settings.dedendumD / 2);
@@ -205,7 +215,6 @@ int main(int argc, char **argv) {
 
         gear1.draw(renderer);
         gear2.draw(renderer);
-        //        gear3.draw(renderer);
 
         renderer.drawColor({255, 255, 255});
 
