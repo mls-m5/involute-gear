@@ -118,7 +118,7 @@ struct GearSettings {
     // Input parameters
     int numTeeth;
     int module = 1;
-    float preassureAngle = 20; // Degrees
+    float preassureAngle = 20; // Degrees 20 is standard for most gears
 
     // Results. Don't set these
     float pitchD = module * preassureAngle;
@@ -126,15 +126,29 @@ struct GearSettings {
     float clearingD = pitchD - module * 2;
     float dedendumD = pitchD - module * 2 * 1.5; // Root angle
     float baseD = pitchD * std::cos(preassureAngle / 180.f * pi<float>());
+    float pitchAngle = pi<float>() / numTeeth;
+    float gearPitch = pitchAngle * pitchD / 2.f;
 
-    float thresholdAngle(float d) const {
-        return std::sqrt((d * d / 4.f) / (baseD * baseD / 4.f) - 1.f);
+    float thresholdAngle(float d) {
+        auto angle = profileThresholdAngle(d);
+        auto p = involuteProfile(angle);
+        return std::atan2(p.y, p.x);
     }
 
-    glm::vec2 involouteProfile(float angle) {
+    glm::vec2 involuteProfile(float angle) {
         auto r = baseD / 2.f;
-        return r *vec2{std::cos(angle), std::sin(angle)} +
-               r * angle *vec2{std::sin(angle), -std::cos(angle)};
+        return r *vec2{std::cos(angle), -std::sin(angle)} +
+               r * angle *vec2{std::sin(angle), std::cos(angle)};
+    }
+
+    // Note this is only the angle that is used as input to the involuteProfile
+    // function. Use realAngleFromThreshold to get the real angle
+    float profileThresholdAngle(float d) const {
+        float x = d / 2;
+        float x2 = x * x;
+        float r = baseD / 2;
+        float r2 = r * r;
+        return std::sqrt(x2 / r2 - 1);
     }
 };
 
@@ -165,19 +179,25 @@ int main(int argc, char **argv) {
 
     auto center = (gear1.pos + gear2.pos) / 2.f;
 
-    //    for (auto angle = settings.thresholdAngle(settings.clearingD);
-    //         angle <= settings.thresholdAngle(settings.addendumD);
-    //         angle += .001) {
-    for (auto angle = 0.f; angle <= 4; angle += .01) {
-        auto v = settings.involouteProfile(angle);
-        gear1.points.push_back(v);
-    }
-    //    gear1.rotatePoints(settings.thresholdAngle(settings.pitchD));
-    //    gear1.mirror();
+    {
+        glm::vec2 v = {};
+        auto correctionAngle = 0;
 
-    //    gear1.mirror();
-    //    gear1.repeat(settings.numGears);
-    //    gear2.repeat(settings.numGears);
+        for (auto angle = 0.f; length(v) <= settings.addendumD / 2.f;
+             angle += .01) {
+
+            v = settings.involuteProfile(angle);
+            gear1.points.push_back(v);
+        }
+    }
+
+    gear1.rotatePoints(-settings.thresholdAngle(settings.pitchD)
+                       //                       +settings.pitchAngle
+    );
+
+    gear1.mirror();
+
+    gear2.points = gear1.points;
 
     bool isRunning = true;
 
@@ -191,7 +211,7 @@ int main(int argc, char **argv) {
             }
             if (event->type == SDL_MOUSEMOTION) {
                 gear1.angle = 1. / 100. * event->motion.y - 1.;
-                gear2.angle = -gear1.angle;
+                gear2.angle = -gear1.angle + pi<float>();
 
                 gear3.pos =
                     gear2.pos + vec2{0, gear1.angle * settings.pitchD / 2.};
@@ -203,14 +223,22 @@ int main(int argc, char **argv) {
         renderer.clear();
         renderer.drawColor({100, 100, 100, 255});
 
-        drawArc(renderer, gear1.pos, settings.baseD / 2);
+        drawLine(renderer,
+                 gear1.pos,
+                 gear1.pos + settings.pitchD / 2.f *
+                                 vec2{cos(gear1.angle), sin(gear1.angle)});
+
         drawArc(renderer, gear1.pos, settings.addendumD / 2);
-        drawArc(renderer, gear1.pos, settings.dedendumD / 2);
         drawArc(renderer, gear1.pos, settings.clearingD / 2);
         drawArc(renderer, gear2.pos, settings.pitchD / 2);
 
-        renderer.drawColor({200, 200, 200});
+        renderer.drawColor({0, 0, 30});
+        drawArc(renderer, gear1.pos, settings.dedendumD / 2);
 
+        renderer.drawColor({200, 0, 0});
+        drawArc(renderer, gear1.pos, settings.baseD / 2);
+
+        renderer.drawColor({200, 200, 200});
         drawArc(renderer, gear1.pos, settings.pitchD / 2);
 
         gear1.draw(renderer);
