@@ -105,14 +105,16 @@ struct GearProfile {
 
         float l = 0;
 
-        for (auto angle = settings.thresholdAngle(settings.dedendumD);
-             v = settings.involuteProfile(angle),
-                  (l = length(v)) <= settings.addendumD / 2.f;
-             angle += settings.module * .01) {
+        auto from = settings.thresholdAngle(settings.clearingD);
+        auto to = settings.profileThresholdAngle(settings.addendumD);
 
-            if (l < settings.clearingD / 2.f) {
-                continue;
-            }
+        int steps = 20;
+
+        for (auto i = 0; i <= steps; ++i) {
+            auto amount = static_cast<float>(i) / steps;
+            auto angle = from + (to - from) * amount;
+
+            v = settings.involuteProfile(angle);
 
             points.push_back(v);
         }
