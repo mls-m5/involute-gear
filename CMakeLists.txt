@@ -35,11 +35,22 @@ target_link_libraries(
 
 add_executable(
     first-test
-    src/first-test.cpp
+    src/nostalgia/first-test.cpp
     )
 
 target_link_libraries(
     first-test
+    PRIVATE
+    common
+    )
+
+add_executable(
+    second-test
+    src/nostalgia/second-test.cpp
+    )
+
+target_link_libraries(
+    second-test
     PRIVATE
     common
     )

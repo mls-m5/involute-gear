@@ -14,7 +14,7 @@ using namespace glm;
 using FuncT = std::function<void(glm::vec2, glm::vec2)>;
 
 void drawLine(sdl::RendererView view, glm::vec2 p1, glm::vec2 p2) {
-    float scale = 1.5;
+    float scale = 10;
     view.drawLine(p1.x * scale, p1.y * scale, p2.x * scale, p2.y * scale);
 }
 
@@ -46,28 +46,85 @@ void drawArc(sdl::RendererView view,
             end);
 }
 
-struct Gear {
-    auto createLocation() {
-        mat4 location = identity<mat4>();
-        location = translate(location, vec3{pos, 0});
-        location = rotate(location, angle, {0, 0, 1});
-        return location;
+struct GearSettings {
+    // Input parameters
+    int numTeeth = 10;
+    int module = 1;
+    float preassureAngle = 20; // Degrees 20 is standard for most gears
+
+    // Results. Don't set these unless you know what you're doing
+    float pitchD = module * numTeeth;
+    float addendumD = pitchD + module * 2;
+    float clearingD = pitchD - module * 2;
+    float dedendumD = pitchD - module * 2 * 1.5; // Root angle
+    float baseD = pitchD * std::cos(preassureAngle / 180.f * pi<float>());
+    float pitchAngle = pi<float>() * 2. / numTeeth;
+    float gearPitch = pitchAngle * pitchD / 2.f;
+
+    float thresholdAngle(float d) {
+        auto angle = profileThresholdAngle(d);
+        auto p = involuteProfile(angle);
+        return std::atan2(p.y, p.x);
     }
 
-    void draw(sdl::RendererView view) {
-        auto location = createLocation();
+    // Calculate the profile
+    // This is the most important function when calculating gears
+    glm::vec2 involuteProfile(float angle) {
+        auto r = baseD / 2.f;
+        return r *vec2{std::cos(angle), -std::sin(angle)} +
+               r * angle *vec2{std::sin(angle), std::cos(angle)};
+    }
 
-        for (size_t i = 1; i < points.size(); ++i) {
-            auto p1 = location *vec4{points.at(i - 1), 0, 1};
-            auto p2 = location *vec4{points.at(i), 0, 1};
-            drawLine(view, p1, p2);
+    // Note this is only the angle that is used as input to the involuteProfile
+    // function. Use thresholdAngle to get the real angle
+    float profileThresholdAngle(float d) const {
+        float x = d / 2;
+        float x2 = x * x;
+        float r = baseD / 2;
+        float r2 = r * r;
+        auto inside = x2 / r2 - 1;
+        if (inside <= 0) {
+            return 0;
         }
+        return std::sqrt(inside);
+    }
+};
+
+struct GearProfile {
+    GearSettings settings;
+
+    GearProfile(GearSettings settings)
+        : settings{settings} {
+        computeProfile();
     }
 
-    void addInverted(vec2 p1) {
-        auto inv = affineInverse(createLocation());
-        auto local = inv *vec4{p1, 0, 1};
-        points.emplace_back(vec2{local});
+    void computeProfile() {
+        points.clear();
+        glm::vec2 v = {};
+        auto correctionAngle = 0;
+
+        float l = 0;
+
+        for (auto angle = settings.thresholdAngle(settings.dedendumD);
+             v = settings.involuteProfile(angle),
+                  (l = length(v)) <= settings.addendumD / 2.f;
+             angle += settings.module * .01) {
+
+            if (l < settings.clearingD / 2.f) {
+                continue;
+            }
+
+            points.push_back(v);
+        }
+
+        auto last = normalize(points.front()) * settings.dedendumD / 2.f;
+        points.insert(points.begin(), last);
+
+        rotatePoints(-settings.thresholdAngle(settings.pitchD) +
+                     settings.pitchAngle / 2.f / 2.f);
+        mirror();
+        repeat(settings.numTeeth);
+        points.push_back(points.front()); // Close loop
     }
 
     void rotatePoints(float angle) {
@@ -107,48 +164,31 @@ struct Gear {
         std::reverse(points.begin(), points.end());
     }
 
-    glm::vec2 pos;
-    float angle = 0;
-
     std::vector<glm::vec2> points;
 };
 
-struct GearSettings {
+struct GearView {
+    GearProfile &gear;
+    glm::vec2 pos;
+    float angle = 0;
 
-    // Input parameters
-    int numTeeth;
-    int module = 1;
-    float preassureAngle = 20; // Degrees 20 is standard for most gears
-
-    // Results. Don't set these
-    float pitchD = module * preassureAngle;
-    float addendumD = pitchD + module * 2;
-    float clearingD = pitchD - module * 2;
-    float dedendumD = pitchD - module * 2 * 1.5; // Root angle
-    float baseD = pitchD * std::cos(preassureAngle / 180.f * pi<float>());
-    float pitchAngle = pi<float>() / numTeeth;
-    float gearPitch = pitchAngle * pitchD / 2.f;
-
-    float thresholdAngle(float d) {
-        auto angle = profileThresholdAngle(d);
-        auto p = involuteProfile(angle);
-        return std::atan2(p.y, p.x);
+    auto createLocation() {
+        mat4 location = identity<mat4>();
+        location = translate(location, vec3{pos, 0});
+        location = rotate(location, angle, {0, 0, 1});
+        return location;
     }
 
-    glm::vec2 involuteProfile(float angle) {
-        auto r = baseD / 2.f;
-        return r *vec2{std::cos(angle), -std::sin(angle)} +
-               r * angle *vec2{std::sin(angle), std::cos(angle)};
-    }
+    void draw(sdl::RendererView view) {
+        auto location = createLocation();
 
-    // Note this is only the angle that is used as input to the involuteProfile
-    // function. Use realAngleFromThreshold to get the real angle
-    float profileThresholdAngle(float d) const {
-        float x = d / 2;
-        float x2 = x * x;
-        float r = baseD / 2;
-        float r2 = r * r;
-        return std::sqrt(x2 / r2 - 1);
+        auto &points = gear.points;
+
+        for (size_t i = 1; i < points.size(); ++i) {
+            auto p1 = location *vec4{points.at(i - 1), 0, 1};
+            auto p2 = location *vec4{points.at(i), 0, 1};
+            drawLine(view, p1, p2);
+        }
     }
 };
 
@@ -167,37 +207,18 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    auto gear1 = Gear{};
-    auto gear2 = Gear{};
-    auto gear3 = Gear{};
+    auto gear =
+        GearProfile{{.numTeeth = 30, .module = 1, .preassureAngle = 20.}};
 
-    auto settings = GearSettings{40, 10};
+    auto gearView1 = GearView{gear};
+    auto gearView2 = GearView{gear};
 
-    gear1.pos = {200, 200};
-    gear2.pos = {gear1.pos.x + settings.pitchD, 200};
-    gear3.pos = {gear1.pos.x + settings.pitchD, 200};
+    auto &settings = gear.settings;
 
-    auto center = (gear1.pos + gear2.pos) / 2.f;
+    gearView1.pos = {settings.pitchD / 2., settings.pitchD / 2.};
+    gearView2.pos = {gearView1.pos.x + settings.pitchD, gearView1.pos.x};
 
-    {
-        glm::vec2 v = {};
-        auto correctionAngle = 0;
-
-        for (auto angle = 0.f; length(v) <= settings.addendumD / 2.f;
-             angle += .01) {
-
-            v = settings.involuteProfile(angle);
-            gear1.points.push_back(v);
-        }
-    }
-
-    gear1.rotatePoints(-settings.thresholdAngle(settings.pitchD)
-                       //                       +settings.pitchAngle
-    );
-
-    gear1.mirror();
-
-    gear2.points = gear1.points;
+    auto center = (gearView1.pos + gearView2.pos) / 2.f;
 
     bool isRunning = true;
 
@@ -210,13 +231,11 @@ int main(int argc, char **argv) {
                 break;
             }
             if (event->type == SDL_MOUSEMOTION) {
-                gear1.angle = 1. / 100. * event->motion.y - 1.;
-                gear2.angle = -gear1.angle + pi<float>();
+                gearView1.angle = 1. / 100. * event->motion.y - 1.;
+                gearView2.angle =
+                    -gearView1.angle + pi<float>() + settings.pitchAngle / 2.f;
 
-                gear3.pos =
-                    gear2.pos + vec2{0, gear1.angle * settings.pitchD / 2.};
-
-                window.title(std::to_string(gear1.angle).c_str());
+                window.title(std::to_string(gearView1.angle).c_str());
             }
         }
         renderer.drawColor({100, 0, 0, 255});
@@ -224,25 +243,32 @@ int main(int argc, char **argv) {
         renderer.drawColor({100, 100, 100, 255});
 
         drawLine(renderer,
-                 gear1.pos,
-                 gear1.pos + settings.pitchD / 2.f *
-                                 vec2{cos(gear1.angle), sin(gear1.angle)});
+                 gearView1.pos,
+                 gearView1.pos +
+                     settings.pitchD / 2.f *
+                         vec2{cos(gearView1.angle), sin(gearView1.angle)});
+        drawLine(renderer,
+                 gearView1.pos,
+                 gearView1.pos +
+                     settings.pitchD / 2.f *
+                         vec2{cos(gearView1.angle + settings.pitchAngle),
+                              sin(gearView1.angle + settings.pitchAngle)});
 
-        drawArc(renderer, gear1.pos, settings.addendumD / 2);
-        drawArc(renderer, gear1.pos, settings.clearingD / 2);
-        drawArc(renderer, gear2.pos, settings.pitchD / 2);
+        drawArc(renderer, gearView1.pos, settings.addendumD / 2);
+        drawArc(renderer, gearView1.pos, settings.clearingD / 2);
+        drawArc(renderer, gearView2.pos, settings.pitchD / 2);
 
         renderer.drawColor({0, 0, 30});
-        drawArc(renderer, gear1.pos, settings.dedendumD / 2);
+        drawArc(renderer, gearView1.pos, settings.dedendumD / 2);
 
         renderer.drawColor({200, 0, 0});
-        drawArc(renderer, gear1.pos, settings.baseD / 2);
+        drawArc(renderer, gearView1.pos, settings.baseD / 2);
 
         renderer.drawColor({200, 200, 200});
-        drawArc(renderer, gear1.pos, settings.pitchD / 2);
+        drawArc(renderer, gearView1.pos, settings.pitchD / 2);
 
-        gear1.draw(renderer);
-        gear2.draw(renderer);
+        gearView1.draw(renderer);
+        gearView2.draw(renderer);
 
         renderer.drawColor({255, 255, 255});
 

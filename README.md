@@ -1,5 +1,6 @@
 # involute-gears
 
+![screenshot](screenshot.png)
 
 ## References
 

@@ -46,7 +46,7 @@ void drawArc(sdl::RendererView view,
             end);
 }
 
-struct Gear {
+struct GearProfile {
     auto createLocation() {
         mat4 location = identity<mat4>();
         location = translate(location, vec3{pos, 0});
@@ -152,9 +152,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    auto gear1 = Gear{};
-    auto gear2 = Gear{};
-    auto gear3 = Gear{};
+    auto gear1 = GearProfile{};
+    auto gear2 = GearProfile{};
+    auto gear3 = GearProfile{};
 
     auto settings = GearSettings{200, 20};
 

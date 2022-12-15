@@ -30,7 +30,7 @@ void drawArc(
     }
 }
 
-struct Gear {
+struct GearProfile {
     auto createLocation() {
 
         mat4 location = identity<mat4>();
@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    auto gear1 = Gear{};
-    auto gear2 = Gear{};
+    auto gear1 = GearProfile{};
+    auto gear2 = GearProfile{};
 
     auto radius = 100;
 
