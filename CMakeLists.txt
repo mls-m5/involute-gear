@@ -72,3 +72,17 @@ target_link_libraries(
     )
 
 
+if (EMSCRIPTEN)
+
+    set(
+        CMAKE_EXECUTABLE_SUFFIX
+        ".html"
+        )
+    set_target_properties(
+        involute-gears
+        PROPERTIES
+        OUTPUT_NAME
+        "index"
+        )
+
+endif()
