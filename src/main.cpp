@@ -201,6 +201,7 @@ int main(int argc, char **argv) {
                               800,
                               600,
                               SDL_WINDOW_OPENGL};
+                              
 
     auto renderer = sdl::Renderer{window.get(), -1, SDL_RENDERER_ACCELERATED};
 
@@ -287,3 +288,4 @@ int main(int argc, char **argv) {
 
     return 0;
 }
+
